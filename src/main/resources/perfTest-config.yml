@@ -1,0 +1,34 @@
+logging:
+  level: INFO
+
+  appenders:
+    # make file appender the 1st so its attributes can be overridden via dropwizard Java system properties starting with -Ddw.logging.appenders[0]
+    - type: file
+
+      # the currentLogFilename default can be overridden by setting the "-Ddw.logging.appenders[0].currentLogFilename" jvm arg
+      currentLogFilename: ./dropwizardPerfTest.log
+
+      # the archivedLogFilenamePattern default can be overridden by setting the "-Ddw.logging.appenders[0].archivedLogFilenamePattern" jvm arg
+      archivedLogFilenamePattern: ./dropwizardPerfTest%i.log.zip
+      maxFileSize: 20MB
+      archivedFileCount: 5
+      logFormat: "%d %-5p {%X{processName}} [%.25t] [%c{0}] %m%n%xEx{5}"
+
+  loggers:
+    local.snk: INFO
+
+    # HTTP logging is extremely verbose at DEBUG level, so don't show by default even if primary level is debug.
+    "org.apache.http": INFO
+    "org.eclipse.jetty": INFO
+
+    # Blackbird logs annoying warning about not performing optimally for Java 8, so enabled only errors
+    "com.fasterxml.jackson.module.blackbird.BlackbirdModule": ERROR
+
+server:
+  # rootPath is the root of the Jersey (JAX-RS) servlet, i.e. it's the root of our API (but not static assets like UI)
+  # rootPath is relative to applicationContextPath
+  rootPath: /api/
+
+  # by default all requests are written to the console appender which is extremely verbose! Override by specifying an empty requestLog appenders set.
+  requestLog:
+    appenders: []
