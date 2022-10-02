@@ -7,6 +7,7 @@ import io.dropwizard.setup.Bootstrap;
 import io.dropwizard.setup.Environment;
 import io.dropwizard.util.Duration;
 import local.snk.health.PrimeHealthCheck;
+import local.snk.metrics.CpuUsageGauge;
 import local.snk.resources.PrimeResource;
 import org.apache.commons.lang3.StringUtils;
 import org.eclipse.jetty.server.Connector;
@@ -20,6 +21,10 @@ import javax.servlet.FilterRegistration;
 import javax.ws.rs.NotFoundException;
 import javax.ws.rs.core.UriBuilder;
 import java.lang.management.ManagementFactory;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
+
+import static com.codahale.metrics.MetricRegistry.name;
 
 public class DropwizardPerfTestApplication extends Application<DropwizardPerfTestConfiguration> {
     private static final Logger LOG = LoggerFactory.getLogger(DropwizardPerfTestApplication.class);
@@ -55,12 +60,21 @@ public class DropwizardPerfTestApplication extends Application<DropwizardPerfTes
 
         setupLifecycleHooks();
 
-        PrimeResource primeResource = new PrimeResource();
+        int availableProcessors = Runtime.getRuntime().availableProcessors();
+        ExecutorService primeAsyncExecutor = environment.lifecycle().executorService(name(PrimeResource.class, "prime-%d"))
+                .maxThreads(availableProcessors)
+                .minThreads(1)
+                .build();
+
+        PrimeResource primeResource = new PrimeResource(primeAsyncExecutor);
 
         environment.healthChecks().register("Prime health check", new PrimeHealthCheck(primeResource));
         environment.jersey().register(primeResource);
 
-        setupThrottling();
+        environment.metrics().register(name(CpuUsageGauge.class, "cpu"), new CpuUsageGauge(3, TimeUnit.SECONDS));
+
+        // Throttling is done at executor level now
+        // setupThrottling();
     }
 
     static String getProcessName() {
