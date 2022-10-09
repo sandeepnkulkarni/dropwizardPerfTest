@@ -1,5 +1,6 @@
 package local.snk.resources;
 
+import com.codahale.metrics.annotation.Timed;
 import com.google.common.primitives.Ints;
 import local.snk.model.PrimeResponse;
 import org.apache.commons.lang3.RandomStringUtils;
@@ -35,19 +36,38 @@ public class PrimeResource {
         this.executorService = executorService;
     }
 
+    @Timed
     @GET
     @Produces(MediaType.APPLICATION_JSON)
     public Response getPrime(
             @QueryParam("upto") OptionalInt upto
     ) {
-        PrimeResponse primeResponse = getPrimeNumbersTill(upto);
-        return Response.ok(primeResponse).build();
+        return getPrimeNumbersTill(upto);
+    }
+
+    @Timed
+    @GET
+    @Path("/executor")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getPrimeExecutor(
+            @QueryParam("upto") OptionalInt upto
+    ) {
+        Response response = null;
+        try {
+            response = executorService.submit(() -> getPrimeNumbersTill(upto)).get();
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            response = Response.serverError().entity(ex.getMessage()).build();
+        }
+        return response;
     }
 
     /**
      * From:
      * https://eclipse-ee4j.github.io/jersey.github.io/documentation/latest/async.html
      * https://blog.allegro.tech/2014/10/async-rest.html
+     * https://mincong.io/2020/03/15/jaxrs-async-processing/
+     * https://blogs.oracle.com/javamagazine/post/reactive-programming-with-jax-rs
      * https://github.com/mplanchant/dropwizard-async/blob/master/src/main/java/com/logiccache/resources/BookResource.java
      * <p>
      * Other references:
@@ -61,6 +81,7 @@ public class PrimeResource {
      * https://github.com/knowm/XDropWizard
      */
 
+    @Timed
     @GET
     @Path("/async")
     @Produces(MediaType.APPLICATION_JSON)
@@ -69,11 +90,12 @@ public class PrimeResource {
             @Suspended final AsyncResponse asyncResponse
     ) {
         executorService.execute(() -> {
-            PrimeResponse primeResponse = getPrimeNumbersTill(upto);
+            Response primeResponse = getPrimeNumbersTill(upto);
             asyncResponse.resume(primeResponse);
         });
     }
 
+    @Timed
     @GET
     @Path("/managedAsync")
     @ManagedAsync
@@ -82,10 +104,11 @@ public class PrimeResource {
             @QueryParam("upto") OptionalInt upto,
             @Suspended final AsyncResponse asyncResponse
     ) {
-        PrimeResponse primeResponse = getPrimeNumbersTill(upto);
+        Response primeResponse = getPrimeNumbersTill(upto);
         asyncResponse.resume(primeResponse);
     }
 
+    @Timed
     @GET
     @Path("/asyncFuture")
     @Produces(MediaType.APPLICATION_JSON)
@@ -98,12 +121,25 @@ public class PrimeResource {
                 .thenApply(asyncResponse::resume);
     }
 
-    private PrimeResponse getPrimeNumbersTill(OptionalInt upto) {
+    /* Does not work currently
+     *
+    @Timed
+    @GET
+    @Path("/asyncCompletableFuture")
+    @Produces(MediaType.APPLICATION_JSON)
+    public CompletionStage<Response> asyncCompletableFutureGetPrime(
+            @QueryParam("upto") OptionalInt upto
+    ) {
+        return CompletableFuture.supplyAsync(() -> getPrimeNumbersTill(upto), executorService);
+    }
+    */
+
+    private Response getPrimeNumbersTill(OptionalInt upto) {
         final int maxNumber = Ints.constrainToRange(upto.orElse(MAX_NUMBER), MIN_NUMBER, MAX_NUMBER);
         final int primeNumbersTill = RANDOM_GENERATOR.nextInt(maxNumber - MIN_NUMBER + 1) + MIN_NUMBER;
 
         sortStrings();
-        return new PrimeResponse(primeNumbersTill(primeNumbersTill));
+        return Response.ok(new PrimeResponse(primeNumbersTill(primeNumbersTill)), MediaType.APPLICATION_JSON).build();
     }
 
     private List<Integer> primeNumbersTill(int n) {
